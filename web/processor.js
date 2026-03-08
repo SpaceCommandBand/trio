@@ -43,6 +43,10 @@ class TrioProcessor extends AudioWorkletProcessor {
         } else if (event.type == "on") {
             console.log("proc down 2");
             this.wasm.exports.vox_gate(this.dsp, 1.0);
+        } else if (event.type == "setBase") {
+            this.wasm.exports.vox_set_base(this.dsp, event.midi);
+        } else if (event.type == "setSpeed") {
+            this.wasm.exports.vox_set_speed(this.dsp, event.freq);
         }
     }
 }

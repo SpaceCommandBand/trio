@@ -132,7 +132,7 @@ impl VoxData {
             dcblk: DCBlocker::new(sr),
             x_axis: 0.,
             px_axis: -1.,
-            pitches: vec![0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21],
+            pitches: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27],
             base: 60,
             lower_lookup: [-5, -3, -1, 0, 2, 4, 5],
             upper_lookup: [4, 5, 7, 9, 11, 12, 14],
@@ -180,7 +180,7 @@ impl VoxData {
     fn check_for_pitch_changes(&mut self) {
         let pitch = (self.x_axis * self.pitches.len() as f32) as usize;
         let pitch = pitch.clamp(0, self.pitches.len() - 1);
-        let pitch = 60.0 + self.pitches[pitch] as f32;
+        let pitch = self.base as f32 + self.pitches[pitch] as f32;
 
         let did_pitch_change = self.last_pitch > 0. && self.last_pitch != pitch;
 
@@ -241,11 +241,11 @@ impl VoxData {
 
         if self.lphs >= 0. && self.lphs > clk {
             self.voice_manager.tick();
-            println!("tick {}", self.voice_manager.state.time);
+            //println!("tick {}", self.voice_manager.state.time);
             while let Some(evt) = self.voice_manager.pop_next_event() {
                 match evt {
                     EventType::LowerOn => {
-                        println!("Lower on!");
+                        //println!("Lower on!");
                         self.lower.gain.value = 0.8;
                         let pitch = self.lead.pitch.value;
                         self.chord_manager.change(pitch as u16);
@@ -259,7 +259,7 @@ impl VoxData {
                         self.lower.reset();
                     }
                     EventType::LowerChange => {
-                        println!("Lower change!");
+                        //println!("Lower change!");
                         self.lower.gain.value = 0.8;
                         let pitch = self.lead.pitch.value;
                         self.chord_manager.change(pitch as u16);
@@ -272,7 +272,7 @@ impl VoxData {
                         self.chord_manager.cache_lower(pitch as u16);
                     }
                     EventType::UpperOn => {
-                        println!("Upper On!");
+                        //println!("Upper On!");
                         self.upper.gain.value = 0.8;
                         let pitch = self.lead.pitch.value;
                         //let (idx, octave) = self.get_scale_degree(pitch as u16, self.base);
@@ -285,7 +285,7 @@ impl VoxData {
                         self.upper.reset();
                     }
                     EventType::UpperChange => {
-                        println!("Upper Change!");
+                        //println!("Upper Change!");
                         self.upper.gain.value = 0.8;
                         let pitch = self.lead.pitch.value;
                         let pitch = self.upper_pitch_lookup(pitch);
@@ -373,7 +373,7 @@ fn db2lin(db: f32) -> f32 {
 
 impl Drop for VoxData {
     fn drop(&mut self) {
-        println!("dropping");
+        //println!("dropping");
     }
 }
 
@@ -399,7 +399,7 @@ impl SmoothParam {
 #[no_mangle]
 pub extern "C" fn newdsp(sr: u32) -> Box<VoxData> {
     let sr = sr as usize;
-    println!("samplerate: {}", sr);
+    //println!("samplerate: {}", sr);
     Box::new(VoxData::new(sr))
 }
 
@@ -454,6 +454,16 @@ pub extern "C" fn vox_gate(vd: &mut VoxData, gate: f32) {
 #[no_mangle]
 pub extern "C" fn vox_tongue_shape(vd: &mut VoxData, x: f32, y: f32) {
     vd.lead.voice.tract.tongue_shape(x, y);
+}
+
+#[no_mangle]
+pub extern "C" fn vox_set_base(vd: &mut VoxData, base: u32) {
+    vd.base = base as u16;
+}
+
+#[no_mangle]
+pub extern "C" fn vox_set_speed(vd: &mut VoxData, freq: f32) {
+    vd.clk.set_freq(freq);
 }
 
 #[no_mangle]

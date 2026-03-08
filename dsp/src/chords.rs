@@ -150,7 +150,7 @@ impl CandidatesTable {
 
     pub fn get_least_used(&mut self, chord_freqs: &HashMap<usize, usize>) -> usize {
         if self.ncandidates == 0 {
-            panic!("Shouldn't have called this function");
+            return 0;
         }
 
         // only attempt if there is more than one candidate
@@ -186,7 +186,7 @@ impl CandidatesTable {
         key: u8,
     ) -> usize {
         if self.ncandidates == 0 {
-            panic!("oops");
+            return 0;
         }
 
         // only attempt if there is more than one candidate
@@ -388,17 +388,18 @@ impl ChordManager {
         let dominant = states.add_chord(&[SO, TI, RE]);
         let submediant = states.add_chord(&[LA, DO, MI]);
 
-        // Set up fallback chords in case state machine doesn't cover it
-        // Only worry about diatonic notes. Non-diatonic
-        // notes aren't expected to be used in this
-        // Sticking to donic/subdominant/tonic is
-        // a safe bet
+        // Fallback chords for all 12 scale degrees (chromatic keyboard support)
         states.add_fallback_chord(DO, tonic);
+        states.add_fallback_chord(1, tonic);       // C#/Db → tonic
         states.add_fallback_chord(RE, dominant);
+        states.add_fallback_chord(3, supertonic);  // D#/Eb → supertonic
         states.add_fallback_chord(MI, tonic);
         states.add_fallback_chord(FA, subdominant);
+        states.add_fallback_chord(6, dominant);    // F#/Gb → dominant
         states.add_fallback_chord(SO, dominant);
+        states.add_fallback_chord(8, submediant);  // G#/Ab → submediant
         states.add_fallback_chord(LA, subdominant);
+        states.add_fallback_chord(10, subdominant); // A#/Bb → subdominant
         states.add_fallback_chord(TI, dominant);
 
         // Populate the state transition table
@@ -511,7 +512,7 @@ impl ChordManager {
                 );
 
                 if mvt <= 3 {
-                    println!("lazily selected least used chord!");
+                    //println!("lazily selected least used chord!");
                     self.chord = least_used_chord;
                 } else {
                     self.chord = candidates.get_least_movement(
@@ -546,25 +547,27 @@ impl ChordManager {
         if uses_cached {
             if found_last_pitch && use_cached_voices {
                 // Choose a chord from transition table
-                println!("transition chord: {}", self.chord);
+                //println!("transition chord: {}", self.chord);
                 self.select_next_chord(pitch);
             } else {
                 // Choose a chord from fallbacks
-                println!("fallback chord: {}", self.chord);
+                //println!("fallback chord: {}", self.chord);
                 self.chord = self.states.get_fallback_chord(pitch, self.key);
             }
         } else if found_last_pitch {
             // Choose a chord from transition table
-            println!("transition chord: {}", self.chord);
+            //println!("transition chord: {}", self.chord);
             self.select_next_chord(pitch);
         } else {
             // Choose a chord from fallbacks
-            println!("fallback chord: {}", self.chord);
+            //println!("fallback chord: {}", self.chord);
             self.chord = self.states.get_fallback_chord(pitch, self.key);
         }
-        // Update chord frequency
-        let count = self.chord_frequency.get(&self.chord).unwrap();
-        self.chord_frequency.insert(self.chord, count + 1);
+        // Update chord frequency (guard against 0 = no chord found)
+        if self.chord > 0 {
+            let count = self.chord_frequency.get(&self.chord).unwrap_or(&0);
+            self.chord_frequency.insert(self.chord, count + 1);
+        }
 
         self.pitch = pitch;
     }
@@ -572,7 +575,7 @@ impl ChordManager {
         let chord = self.states.get_chord(self.chord);
         let lead_pitch = self.pitch;
         let key = self.key;
-        println!("upper find from chord {}", self.chord);
+        //println!("upper find from chord {}", self.chord);
         find_nearest_upper(chord, lead_pitch, key)
     }
 
@@ -580,7 +583,7 @@ impl ChordManager {
         let chord = self.states.get_chord(self.chord);
         let lead_pitch = self.pitch;
         let key = self.key;
-        println!("lower find from chord {}", self.chord);
+        //println!("lower find from chord {}", self.chord);
         find_nearest_lower(chord, lead_pitch, key)
     }
 

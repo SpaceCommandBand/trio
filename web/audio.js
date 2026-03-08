@@ -17,6 +17,14 @@ class TrioWorkletNode extends AudioWorkletNode {
     off() {
         this.port.postMessage({type: "off"});
     }
+
+    setBase(midi) {
+        this.port.postMessage({type: "setBase", midi: midi});
+    }
+
+    setSpeed(freq) {
+        this.port.postMessage({type: "setSpeed", freq: freq});
+    }
 }
 
 async function startAudio(context) {
