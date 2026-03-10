@@ -1,20 +1,15 @@
-# Trio
-A singing synthesizer musical instrument with algorithmic
-3-part harmony. Written using WebAudio, Canvas, WebAssembly,
-and Rust.
+# Trio (Space Command Band Fork)
 
-A demo can be found [here](https://pbat.ch/recurse/demos/trio).
+This is a fork of [PaulBatchelor/Trio](https://github.com/PaulBatchelor/Trio) —
+a singing synthesizer musical instrument with algorithmic 3-part harmony,
+written using WebAudio, Canvas, WebAssembly, and Rust.
 
-## Building
+See the original project for documentation and demos:
+https://github.com/PaulBatchelor/Trio
 
-Clone this repo, and then `git submodule init` followed by
-`git submodule update`.
+## Changes in this fork
 
-Go into the "web" folder and run `sh build.sh`.
-Make sure you have the `wasm32-unknown-unkown` target installed,
-as well as `wasm-gc`.
-
-If all goes well, a file called "dsp.wasm" should appear,
-and you should be able to serve a local instance
-of the instrument by running `python3 -m http.server` and
-opening `localhost:8000` in a browser.
+- Refactored chord manager to use 12 chromatic major chords instead of diatonic triads
+- Added `chord_select` field to `ChordManager` for direct candidate indexing
+- Added `vox_set_chord_select()` WASM export
+- Removed web frontend files (superseded by the Space Command Band website integration)
