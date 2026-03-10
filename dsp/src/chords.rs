@@ -370,87 +370,39 @@ pub struct ChordManager {
     pub chord_frequency: HashMap<usize, usize>,
     last_upper: Option<u16>,
     last_lower: Option<u16>,
+    pub chord_select: f32, // 0.0 = first candidate, 1.0 = last candidate
 }
 
 #[allow(dead_code)]
 impl ChordManager {
-    /// Populate the chord state transitions
-    /// This is fairly subjective, and can be changed
-    /// to taste
+    /// Populate the chord state transitions using all 12 chromatic major chords.
+    /// Each pitch class gets its own major chord (root + major 3rd + perfect 5th),
+    /// so harmony voices stay chromatic when the lead plays accidentals.
     pub fn populate(&mut self) {
         self.key = KEY_C;
         let states = &mut self.states;
-        // Diatonic triadic chords: everything but 7 (leading tone) diminished
-        let tonic = states.add_chord(&[DO, MI, SO]);
-        let supertonic = states.add_chord(&[RE, FA, LA]);
-        let mediant = states.add_chord(&[MI, SO, TI]);
-        let subdominant = states.add_chord(&[FA, LA, DO]);
-        let dominant = states.add_chord(&[SO, TI, RE]);
-        let submediant = states.add_chord(&[LA, DO, MI]);
 
-        // Fallback chords for all 12 scale degrees (chromatic keyboard support)
-        states.add_fallback_chord(DO, tonic);
-        states.add_fallback_chord(1, tonic);       // C#/Db → tonic
-        states.add_fallback_chord(RE, dominant);
-        states.add_fallback_chord(3, supertonic);  // D#/Eb → supertonic
-        states.add_fallback_chord(MI, tonic);
-        states.add_fallback_chord(FA, subdominant);
-        states.add_fallback_chord(6, dominant);    // F#/Gb → dominant
-        states.add_fallback_chord(SO, dominant);
-        states.add_fallback_chord(8, submediant);  // G#/Ab → submediant
-        states.add_fallback_chord(LA, subdominant);
-        states.add_fallback_chord(10, subdominant); // A#/Bb → subdominant
-        states.add_fallback_chord(TI, dominant);
+        // Build one major chord per chromatic pitch class (12 total).
+        // Intervals: root, +4 semitones (major 3rd), +7 semitones (perfect 5th).
+        let chords: Vec<usize> = (0u8..12)
+            .map(|n| states.add_chord(&[n, (n + 4) % 12, (n + 7) % 12]))
+            .collect();
 
-        // Populate the state transition table
-        // Each chord can transition to a finite number
-        // of chords. The ranking is first in first out.
-        // This part is very subjective.
+        // Fallback: every chromatic scale degree maps to its own major chord.
+        for n in 0u8..12 {
+            states.add_fallback_chord(n, chords[n as usize]);
+        }
 
-        // Tonic (I)
-        states.add_transition(tonic, dominant);
-        states.add_transition(tonic, subdominant);
-        states.add_transition(tonic, submediant);
-        states.add_transition(tonic, supertonic);
-        states.add_transition(tonic, mediant);
+        // Allow transitions between all chord pairs.
+        for i in 0..12 {
+            for j in 0..12 {
+                if i != j {
+                    states.add_transition(chords[i], chords[j]);
+                }
+            }
+        }
 
-        // Supertonic (ii)
-        states.add_transition(supertonic, dominant);
-        states.add_transition(supertonic, mediant);
-        states.add_transition(supertonic, tonic);
-        states.add_transition(supertonic, mediant);
-
-        // Mediant (iii)
-        states.add_transition(mediant, subdominant);
-        states.add_transition(mediant, submediant);
-        states.add_transition(mediant, supertonic);
-
-        // Subdominant (IV)
-        states.add_transition(subdominant, tonic);
-        states.add_transition(subdominant, submediant);
-        states.add_transition(subdominant, dominant);
-
-        // Dominant (V)
-        states.add_transition(dominant, tonic);
-        states.add_transition(dominant, submediant);
-        states.add_transition(dominant, subdominant);
-        states.add_transition(dominant, supertonic);
-
-        // Submediant (vi)
-        states.add_transition(submediant, dominant);
-        states.add_transition(submediant, subdominant);
-        states.add_transition(submediant, mediant);
-        states.add_transition(submediant, supertonic);
-
-        // minor 4
-        let minor4 = states.add_chord(&[FA, LE, DO]);
-        states.add_transition(tonic, minor4);
-        states.add_transition(minor4, tonic);
-        states.add_transition(subdominant, minor4);
-        states.add_transition(supertonic, minor4);
-
-        // set up initial chord frequency table
-        // chord references are vector indices + 1
+        // Initialise the chord frequency table.
         for i in 0..self.states.chords.len() {
             self.chord_frequency.insert(i + 1, 0);
         }
@@ -502,27 +454,14 @@ impl ChordManager {
 
                 candidates.reset();
                 states.query(self.chord, pitch as u8, self.key, candidates);
-                let least_used_chord = candidates.get_least_used(&self.chord_frequency);
-                let mvt = measure_movement(
-                    &self.states.get_chord(least_used_chord),
-                    pitch,
-                    self.last_upper.unwrap(),
-                    self.last_lower.unwrap(),
-                    self.key,
-                );
 
-                if mvt <= 3 {
-                    //println!("lazily selected least used chord!");
-                    self.chord = least_used_chord;
-                } else {
-                    self.chord = candidates.get_least_movement(
-                        &self.states,
-                        pitch,
-                        self.last_upper.unwrap(),
-                        self.last_lower.unwrap(),
-                        self.key,
-                    );
+                if candidates.ncandidates == 0 {
+                    return;
                 }
+
+                let n = candidates.ncandidates as usize;
+                let idx = ((self.chord_select * (n as f32 - 1.0)).round() as usize).min(n - 1);
+                self.chord = candidates.candidates[idx];
             }
         }
     }

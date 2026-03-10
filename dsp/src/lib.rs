@@ -467,6 +467,11 @@ pub extern "C" fn vox_set_speed(vd: &mut VoxData, freq: f32) {
 }
 
 #[no_mangle]
+pub extern "C" fn vox_set_chord_select(vd: &mut VoxData, t: f32) {
+    vd.chord_manager.chord_select = t;
+}
+
+#[no_mangle]
 pub extern "C" fn vox_x_axis(vd: &mut VoxData, x: f32) {
     vd.x_axis = x;
 }
