@@ -459,6 +459,23 @@ pub extern "C" fn vox_tongue_shape(vd: &mut VoxData, x: f32, y: f32) {
 #[no_mangle]
 pub extern "C" fn vox_set_base(vd: &mut VoxData, base: u32) {
     vd.base = base as u16;
+    // Force lead pitch recalculation on next tick
+    vd.px_axis = -1.0;
+    // Immediately reschedule harmony voices if a note is held
+    if vd.lead_playing {
+        let pitch_idx = (vd.x_axis * vd.pitches.len() as f32) as usize;
+        let pitch_idx = pitch_idx.clamp(0, vd.pitches.len() - 1);
+        let pitch = vd.base as f32 + vd.pitches[pitch_idx] as f32;
+        vd.lead.pitch.value = pitch;
+        vd.lead.reset();
+        vd.chord_manager.change(pitch as u16);
+        let lower_pitch = vd.lower_pitch_lookup(pitch);
+        let upper_pitch = vd.upper_pitch_lookup(pitch);
+        vd.lower.schedule_pitch(lower_pitch);
+        vd.upper.schedule_pitch(upper_pitch);
+        vd.chord_manager.cache_lower(lower_pitch as u16);
+        vd.chord_manager.cache_upper(upper_pitch as u16);
+    }
 }
 
 #[no_mangle]
@@ -468,7 +485,43 @@ pub extern "C" fn vox_set_speed(vd: &mut VoxData, freq: f32) {
 
 #[no_mangle]
 pub extern "C" fn vox_set_chord_select(vd: &mut VoxData, t: f32) {
+    let old_zone = (vd.chord_manager.chord_select * 4.0).min(3.999) as usize;
     vd.chord_manager.chord_select = t;
+    let new_zone = (t * 4.0).min(3.999) as usize;
+    // If the chord type zone changed while a note is held, retrigger voices
+    if old_zone != new_zone {
+        vd.voice_manager.retrigger();
+    }
+}
+
+/// Returns the root pitch class (0–11) of the current chord. For debug display.
+#[no_mangle]
+pub extern "C" fn vox_get_chord_root(vd: &mut VoxData) -> u32 {
+    vd.chord_manager.current_root() as u32
+}
+
+/// Returns the chord type index: 0=maj, 1=min, 2=dim, 3=aug. For debug display.
+#[no_mangle]
+pub extern "C" fn vox_get_chord_type(vd: &mut VoxData) -> u32 {
+    vd.chord_manager.current_chord_type as u32
+}
+
+/// Returns current lead voice MIDI pitch (rounded). For debug display.
+#[no_mangle]
+pub extern "C" fn vox_get_lead_pitch(vd: &mut VoxData) -> u32 {
+    vd.lead.pitch.value.round() as u32
+}
+
+/// Returns last-scheduled lower voice MIDI pitch, or 0. For debug display.
+#[no_mangle]
+pub extern "C" fn vox_get_lower_pitch(vd: &mut VoxData) -> u32 {
+    vd.chord_manager.last_lower.unwrap_or(0) as u32
+}
+
+/// Returns last-scheduled upper voice MIDI pitch, or 0. For debug display.
+#[no_mangle]
+pub extern "C" fn vox_get_upper_pitch(vd: &mut VoxData) -> u32 {
+    vd.chord_manager.last_upper.unwrap_or(0) as u32
 }
 
 #[no_mangle]

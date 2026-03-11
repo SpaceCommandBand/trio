@@ -129,6 +129,14 @@ impl VoiceScheduler {
         }
     }
 
+    /// Force-retrigger voice scheduling without a pitch change.
+    /// Used when chord type changes while a note is held.
+    pub fn retrigger(&mut self) {
+        if self.state.gate {
+            self.state.time = 0;
+        }
+    }
+
     pub fn pop_next_event(&mut self) -> Option<EventType> {
         for (evt, hook) in self.hooks.iter_mut() {
             let s = hook.check();

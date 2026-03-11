@@ -359,6 +359,13 @@ fn find_nearest_lower(chord: &Chord, lead_pitch: u16, key: u8) -> u16 {
     lead_pitch
 }
 
+/// Chord type index constants (matches chord_lookup column order, left→right on key)
+pub const CHORD_AUG:   usize = 0;
+pub const CHORD_MAJOR: usize = 1;
+pub const CHORD_MINOR: usize = 2;
+pub const CHORD_DIM:   usize = 3;
+pub const CHORD_TYPE_NAMES: [&str; 4] = ["aug", "maj", "min", "dim"];
+
 #[derive(Default)]
 pub struct ChordManager {
     states: ChordStates,
@@ -368,41 +375,37 @@ pub struct ChordManager {
     candidates: CandidatesTable,
     pub chord_behavior: SelectionHeuristic,
     pub chord_frequency: HashMap<usize, usize>,
-    last_upper: Option<u16>,
-    last_lower: Option<u16>,
-    pub chord_select: f32, // 0.0 = first candidate, 1.0 = last candidate
+    pub last_upper: Option<u16>,
+    pub last_lower: Option<u16>,
+    /// 0.0–1.0: mapped to 4 chord types (maj/min/dim/aug) via chord_lookup
+    pub chord_select: f32,
+    /// Lookup table: chord_lookup[root_class][chord_type] = chord_ref
+    pub chord_lookup: [[usize; 4]; 12],
+    /// Which chord type is currently active (0=maj,1=min,2=dim,3=aug)
+    pub current_chord_type: usize,
 }
 
 #[allow(dead_code)]
 impl ChordManager {
-    /// Populate the chord state transitions using all 12 chromatic major chords.
-    /// Each pitch class gets its own major chord (root + major 3rd + perfect 5th),
-    /// so harmony voices stay chromatic when the lead plays accidentals.
+    /// Populate 48 chords: 4 types × 12 chromatic roots.
+    /// chord_select (0–1) maps to type; played note determines root.
+    /// Types: 0=major (+4,+7), 1=minor (+3,+7), 2=dim (+3,+6), 3=aug (+4,+8)
     pub fn populate(&mut self) {
         self.key = KEY_C;
         let states = &mut self.states;
 
-        // Build one major chord per chromatic pitch class (12 total).
-        // Intervals: root, +4 semitones (major 3rd), +7 semitones (perfect 5th).
-        let chords: Vec<usize> = (0u8..12)
-            .map(|n| states.add_chord(&[n, (n + 4) % 12, (n + 7) % 12]))
-            .collect();
+        // intervals (third, fifth) for each chord type: aug, maj, min, dim
+        let intervals: [(u8, u8); 4] = [(4, 8), (4, 7), (3, 7), (3, 6)];
 
-        // Fallback: every chromatic scale degree maps to its own major chord.
-        for n in 0u8..12 {
-            states.add_fallback_chord(n, chords[n as usize]);
-        }
-
-        // Allow transitions between all chord pairs.
-        for i in 0..12 {
-            for j in 0..12 {
-                if i != j {
-                    states.add_transition(chords[i], chords[j]);
-                }
+        for root in 0u8..12 {
+            for (t, &(third, fifth)) in intervals.iter().enumerate() {
+                let chord = [root, (root + third) % 12, (root + fifth) % 12];
+                let chord_ref = states.add_chord(&chord);
+                self.chord_lookup[root as usize][t] = chord_ref;
             }
         }
 
-        // Initialise the chord frequency table.
+        // Initialise chord frequency table.
         for i in 0..self.states.chords.len() {
             self.chord_frequency.insert(i + 1, 0);
         }
@@ -467,48 +470,28 @@ impl ChordManager {
     }
 
     pub fn change(&mut self, pitch: u16) {
-        // first selected chord will crash on least movement
-        // heuristic will crash because the upper/lower
-        // voices haven't been cached get. This check
-        // makes it use the fallback.
+        let root = ((pitch as i32 - self.key as i32).rem_euclid(12)) as usize;
+        let type_idx = (self.chord_select * 4.0).min(3.999) as usize;
+        self.current_chord_type = type_idx;
+        self.chord = self.chord_lookup[root][type_idx];
 
-        let uses_cached = matches!(&self.chord_behavior, SelectionHeuristic::LeastMovement)
-            || matches!(&self.chord_behavior, SelectionHeuristic::LazyLeastUsed);
-
-        let use_cached_voices =
-            uses_cached && self.last_upper.is_some() && self.last_lower.is_some();
-
-        let found_last_pitch = self.pitch > 0 && self.chord > 0;
-
-        // TODO: this state could be managed better I think
-        // Esesntially: heuristics that rely on cached lower/upper values
-        // need to check that there are cached values to begin with
-        if uses_cached {
-            if found_last_pitch && use_cached_voices {
-                // Choose a chord from transition table
-                //println!("transition chord: {}", self.chord);
-                self.select_next_chord(pitch);
-            } else {
-                // Choose a chord from fallbacks
-                //println!("fallback chord: {}", self.chord);
-                self.chord = self.states.get_fallback_chord(pitch, self.key);
-            }
-        } else if found_last_pitch {
-            // Choose a chord from transition table
-            //println!("transition chord: {}", self.chord);
-            self.select_next_chord(pitch);
-        } else {
-            // Choose a chord from fallbacks
-            //println!("fallback chord: {}", self.chord);
-            self.chord = self.states.get_fallback_chord(pitch, self.key);
-        }
-        // Update chord frequency (guard against 0 = no chord found)
+        // Update chord frequency tracking.
         if self.chord > 0 {
             let count = self.chord_frequency.get(&self.chord).unwrap_or(&0);
             self.chord_frequency.insert(self.chord, count + 1);
         }
 
         self.pitch = pitch;
+    }
+
+    /// Root pitch class (0–11) of the currently active chord.
+    pub fn current_root(&self) -> u8 {
+        ((self.pitch as i32 - self.key as i32).rem_euclid(12)) as u8
+    }
+
+    /// Name of the currently active chord type, e.g. "maj", "min".
+    pub fn chord_type_name(&self) -> &'static str {
+        CHORD_TYPE_NAMES[self.current_chord_type.min(3)]
     }
     pub fn find_upper_pitch(&self) -> u16 {
         let chord = self.states.get_chord(self.chord);
